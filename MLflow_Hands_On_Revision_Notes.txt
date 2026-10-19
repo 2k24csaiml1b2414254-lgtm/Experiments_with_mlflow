@@ -1,0 +1,402 @@
+MLOps HANDS-ON NOTES — MLFLOW Revision Cheat Sheet | Windows PowerShell
+| Python
+
+============================================================ 1. MLFLOW
+KYA HAI? ============================================================
+
+MLflow ek tool hai jo machine-learning experiments ko track aur manage
+karta hai.
+
+Isse hum track kar sakte hain: - Experiment ka naam - Run / training
+attempt - Hyperparameters (jaise n_estimators, max_depth) - Metrics
+(accuracy, loss, F1-score) - Artifacts (plots, CSV, model files, source
+code) - Model artifacts - Dataset inputs - Tags / metadata
+
+Basic terms: - Experiment: related runs ka group. - Run: ek particular
+training/experiment execution. - Parameters: model ki settings, jaise
+max_depth=10. - Metrics: performance numbers, jaise accuracy=0.95. -
+Artifacts: files jo run ke saath save hoti hain. - Tags: extra
+searchable metadata, jaise author ya model_type. - Tracking URI: MLflow
+data kahan store karta hai.
+
+============================================================ 2. WINDOWS
+POWERSHELL — USEFUL COMMANDS
+============================================================
+
+Project folder mein jaana: cd D:_with_mlflow
+
+Python version: python –version
+
+Python executable check: where.exe python
+
+MLflow version: python -m mlflow –version
+
+MLflow install: python -m pip install mlflow
+
+Installed package details: python -m pip show mlflow
+
+Packages ke dependency conflicts check karna: python -m pip check
+
+NOTE: Agar global Python use kar rahe ho, MLflow install/update karne se
+doosre projects ke packages affect ho sakte hain. pip check conflicts
+dikha sakta hai. Existing packages ko bina samjhe randomly
+upgrade/downgrade mat karna.
+
+============================================================ 3. MLFLOW
+UI START KARNA
+============================================================
+
+Project directory se local UI: mlflow ui
+
+Browser mein open: http://127.0.0.1:5000
+
+Agar mlflow command recognize na ho: python -m mlflow ui
+
+UI stop karne ke liye terminal mein: Ctrl + C
+
+IMPORTANT: - UI wala terminal open rehna chahiye jab tak UI use kar rahe
+ho. - Default file-store setup mein mlruns folder dikh sakta hai. -
+SQLite backend use ho to mlflow.db database file ho sakti hai. - mlruns
+folder ka na hona apne aap mein error nahi hai. - Script aur UI ko same
+tracking backend/URI use karna chahiye, warna runs alag jagah dikh sakte
+hain.
+
+SQLite tracking URI example:
+mlflow.set_tracking_uri(“sqlite:///mlflow.db”)
+
+Local SQLite UI start karne ka example: mlflow ui –backend-store-uri
+sqlite:///mlflow.db –port 5000
+
+Agar UI aur script same database use nahi karte, to UI mein expected run
+nahi dikhega.
+
+============================================================ 4. PYTHON
+CODE — BASIC TRACKING
+============================================================
+
+Imports: import mlflow
+
+Experiment select/create: mlflow.set_experiment(“Wine_Classification”)
+
+Run start: with mlflow.start_run(run_name=“RandomForest_v1”): …
+
+Parameter log: mlflow.log_param(“max_depth”, 5)
+mlflow.log_param(“n_estimators”, 100)
+
+Multiple parameters ek saath: mlflow.log_params({ “max_depth”: 5,
+“n_estimators”: 100, “random_state”: 42 })
+
+Metric log: mlflow.log_metric(“accuracy”, 0.94)
+
+Multiple metrics: mlflow.log_metrics({ “accuracy”: 0.94, “precision”:
+0.92, “recall”: 0.91 })
+
+Tag log: mlflow.set_tag(“author”, “Himesh Mishra”)
+mlflow.set_tag(“model_type”, “RandomForestClassifier”)
+
+File artifact log: mlflow.log_artifact(“confusion_matrix.png”)
+mlflow.log_artifact(file)
+
+Figure log: mlflow.log_figure(fig, “confusion_matrix.png”)
+
+Run block complete hone par MLflow run ko end kar deta hai: with
+mlflow.start_run(): …
+
+Remember: - Parameter = model setting / input choice. - Metric =
+measured result. - Artifact = saved file. - Tag = descriptive metadata.
+
+============================================================ 5.
+SCIKIT-LEARN MODEL LOG KARNA
+============================================================
+
+Imports: import mlflow import mlflow.sklearn from sklearn.ensemble
+import RandomForestClassifier
+
+Model train: rf = RandomForestClassifier( max_depth=5, n_estimators=100,
+random_state=42 ) rf.fit(X_train, y_train)
+
+Model log: mlflow.sklearn.log_model( sk_model=rf, name=“random_forest” )
+
+MLflow 3.x mein name= model artifact ka naam dene ke liye use kiya ja
+sakta hai.
+
+MODEL SERIALIZATION / SKOPS ERROR: Agar error aaye:
+UntrustedTypesFoundException sklearn.tree._tree.Tree
+
+To iska matlab MLflow/skops model save karte waqt is type ko
+automatically trust nahi kar raha.
+
+Agar model apne code se train kiya hai aur source fully trusted hai,
+specific type allow kar sakte ho: mlflow.sklearn.log_model(
+sk_model=best_model, name=“random_forest”,
+skops_trusted_types=[“sklearn.tree._tree.Tree”] )
+
+Security note: - Ye sirf trusted model ke liye karo. - Arbitrary
+downloaded model ko blindly trust mat karo. -
+MLFLOW_SKLEARN_SUPPORT_SKOPS=false har MLflow version mein skops ko
+disable kare, ye assume mat karo. - Agar error continue ho, apne
+installed MLflow version ke model-logging options verify karo.
+
+============================================================ 6.
+GRIDSEARCHCV / HYPERPARAMETER TUNING
+============================================================
+
+Imports: from sklearn.model_selection import GridSearchCV from
+sklearn.ensemble import RandomForestClassifier
+
+Model: rf = RandomForestClassifier(random_state=42)
+
+Parameter grid: param_grid = { “n_estimators”: [10, 50, 100],
+“max_depth”: [None, 10, 20, 30] }
+
+GridSearchCV: grid_search = GridSearchCV( estimator=rf,
+param_grid=param_grid, cv=5, n_jobs=-1, verbose=2, scoring=“accuracy” )
+
+Fit: grid_search.fit(X_train, y_train)
+
+Best parameters: best_params = grid_search.best_params_
+
+Best cross-validation score: best_cv_score = grid_search.best_score_
+
+Best trained estimator: best_model = grid_search.best_estimator_
+
+How many combinations? len(grid_search.cv_results_[“params”])
+
+Calculation: - n_estimators has 3 values. - max_depth has 4 values. -
+Total combinations = 3 x 4 = 12. - cv=5 means each combination gets 5
+folds. - Total fits = 12 x 5 = 60.
+
+Log best params and CV metric: mlflow.log_params(best_params)
+mlflow.log_metric(“best_cv_accuracy”, best_cv_score)
+
+Evaluate on held-out test set: from sklearn.metrics import
+accuracy_score
+
+    y_pred = best_model.predict(X_test)
+    test_accuracy = accuracy_score(y_test, y_pred)
+    mlflow.log_metric("test_accuracy", test_accuracy)
+
+Important distinction: - best_score_ = mean cross-validation score on
+training data. - test_accuracy = performance on separate held-out test
+data. - Do not report CV score as if it were test accuracy.
+
+For classification, stratified split can preserve class proportions:
+train_test_split( X, y, test_size=0.2, random_state=42, stratify=y )
+
+============================================================ 7. DATASETS
+KO MLFLOW RUN KE SAATH LOG KARNA
+============================================================
+
+Example: import mlflow.data import pandas as pd
+
+    train_df = X_train.copy()
+    train_df["target"] = y_train
+
+    train_dataset = mlflow.data.from_pandas(
+        train_df,
+        name="breast_cancer_training"
+    )
+
+    mlflow.log_input(train_dataset, context="training")
+
+Testing dataset: test_df = X_test.copy() test_df[“target”] = y_test
+
+    test_dataset = mlflow.data.from_pandas(
+        test_df,
+        name="breast_cancer_testing"
+    )
+
+    mlflow.log_input(test_dataset, context="testing")
+
+context batata hai ki dataset kis purpose se use hua, jaise training ya
+testing.
+
+IMPORTANT: mlflow.log_trace() dataset log karne ka replacement nahi hai.
+Dataset tracking ke liye mlflow.data.from_pandas() + mlflow.log_input()
+use karo.
+
+============================================================ 8. SOURCE
+CODE AUR ARTIFACTS
+============================================================
+
+Current Python script ko artifact ke roop mein log karna:
+mlflow.log_artifact(file)
+
+Kisi specific file ko log karna: mlflow.log_artifact(“path/to/file.csv”)
+
+Matplotlib figure log karna: mlflow.log_figure(fig,
+“confusion_matrix.png”)
+
+Agar figure log kar rahe ho: import matplotlib.pyplot as plt from
+sklearn.metrics import ConfusionMatrixDisplay
+
+    ConfusionMatrixDisplay.from_predictions(y_test, y_pred)
+    fig = plt.gcf()
+    mlflow.log_figure(fig, "confusion_matrix.png")
+    plt.close(fig)
+
+Artifact ka matlab: run ke saath stored file, jaise image, CSV, report
+ya model.
+
+============================================================ 9. MLFLOW
+TRACE WARNING
+============================================================
+
+Agar warning aaye: mlflow.tracing.fluent.log_trace is deprecated
+
+To current MLflow version mein mlflow.log_trace() deprecated ho sakta
+hai. Dataset logging ke liye ise use mat karo; mlflow.log_input() use
+karo.
+
+Agar output mein aaye: PandasDataset has no len()
+
+To trace export fail ho sakta hai. Pehle confirm karo ki code mein
+dataset ko galti se trace ke roop mein log to nahi kiya ja raha. Tracing
+aur dataset tracking alag concepts hain.
+
+============================================================ 10. INTEGER
+COLUMN SCHEMA WARNING
+============================================================
+
+Warning ka gist: Integer column mein training time par missing values
+nahi hain, lekin inference ke time missing value aaye to column float
+ban sakta hai aur schema enforcement fail ho sakta hai.
+
+Kya karna chahiye? - Check karo ki inference data mein missing values
+possible hain ya nahi. - Realistic sample input schema ke liye use
+karo. - Agar missing values expected hain, suitable numeric dtype (often
+float64) consider karo. - Warning ko actual model-logging exception ke
+saath confuse mat karo.
+
+============================================================ 11. DAGSHUB
+PAR REMOTE MLFLOW TRACKING
+============================================================
+
+DagsHub repo MLflow tracking URI ka general format:
+https://dagshub.com//.mlflow
+
+DagsHub init example: import dagshub dagshub.init( repo_owner=“”,
+repo_name=“”, mlflow=True )
+
+Authentication timeout aaye: httpx.ReadTimeout
+
+Iska matlab aksar request/authentication endpoint se time par response
+nahi mila. Ye model training error hona zaroori nahi hai.
+
+Checks: 1. Browser mein DagsHub repo open ho raha hai? 2. Network / VPN
+/ firewall issue to nahi? 3. Token valid hai aur repo par write
+permission hai? 4. Token ko code ya GitHub repository mein hardcode mat
+karo.
+
+PowerShell session mein environment variable set karne ka pattern:
+$env:DAGSHUB_USER_TOKEN = “YOUR_TOKEN_HERE”
+
+Phir script run: python src/file2_remote_setup.py
+
+Security: - Real token ko source code mein paste mat karo. - Token ko
+GitHub par commit/push mat karo. - Agar token accidentally public ho
+gaya, use revoke/rotate karo. - DagsHub remote URI aur local SQLite
+tracking URI alag backends hain; code ko intentionally configure karo.
+
+============================================================ 12. COMMON
+ERRORS — QUICK DIAGNOSIS
+============================================================
+
+A)  UntrustedTypesFoundException Cause: skops model serialization ne ek
+    type untrusted mark kiya. Fix: sirf trusted self-trained model ke
+    liye skops_trusted_types mein exact type allow karo.
+
+B)  Run UI mein nahi dikh raha Possible cause: script aur UI alag
+    tracking URI/database use kar rahe hain. Fix: dono ko same backend
+    URI par configure karo.
+
+C)  mlflow command not recognized Try: python -m mlflow –version python
+    -m mlflow ui
+
+D)  DagsHub httpx.ReadTimeout Cause: remote auth/network request timeout
+    ho sakti hai. Fix: repo access, connectivity, token and write
+    permissions check karo.
+
+E)  pip check dependency conflicts Cause: global Python environment mein
+    packages ki requirements clash kar rahi hain. Fix: conflict details
+    padho; packages ko blindly upgrade/downgrade mat karo.
+
+F)  PandasDataset has no len() Cause: dataset object ko tracing API mein
+    pass kiya ja raha ho sakta hai. Fix: dataset ke liye
+    mlflow.log_input() use karo.
+
+============================================================ 13.
+COMPLETE RUN STRUCTURE — MEMORY TEMPLATE
+============================================================
+
+import mlflow
+
+mlflow.set_tracking_uri(“sqlite:///mlflow.db”)
+mlflow.set_experiment(“my-experiment”)
+
+with mlflow.start_run(run_name=“my-run”): # 1. Train model
+model.fit(X_train, y_train)
+
+    # 2. Predict and evaluate
+    predictions = model.predict(X_test)
+
+    # 3. Log params
+    mlflow.log_params({"parameter": value})
+
+    # 4. Log metrics
+    mlflow.log_metric("accuracy", score)
+
+    # 5. Log inputs
+    dataset = mlflow.data.from_pandas(train_df, name="training-data")
+    mlflow.log_input(dataset, context="training")
+
+    # 6. Log files
+    mlflow.log_artifact("report.csv")
+
+    # 7. Log model
+    mlflow.sklearn.log_model(model, name="model")
+
+    # 8. Add metadata
+    mlflow.set_tag("author", "Himesh Mishra")
+
+Remember to import mlflow.sklearn and use the correct variable names.
+
+============================================================ 14.
+REVISION CHECKLIST
+============================================================
+
+[ ] I can install/check MLflow version. [ ] I can start and stop MLflow
+UI. [ ] I understand experiment vs run. [ ] I can set tracking URI and
+experiment. [ ] I can start a run using with mlflow.start_run(). [ ] I
+can log params, metrics and tags. [ ] I can log artifacts and source
+code. [ ] I can log a scikit-learn model. [ ] I understand GridSearchCV,
+best_params_, best_score_ and best_estimator_. [ ] I can calculate
+combinations x CV folds. [ ] I can distinguish CV score from test
+accuracy. [ ] I can log datasets with mlflow.log_input(). [ ] I can
+identify model serialization errors. [ ] I understand local tracking vs
+DagsHub remote tracking. [ ] I know not to expose access tokens.
+
+============================================================ 15. FAST
+COMMAND REVISION
+============================================================
+
+    cd D:\MLOps\Experiments_with_mlflow
+    python --version
+    python -m mlflow --version
+    python -m pip show mlflow
+    python -m pip check
+    mlflow ui
+    python src/file4_hypertuning.py
+
+UI: http://127.0.0.1:5000
+
+Most-used Python calls: mlflow.set_tracking_uri(“sqlite:///mlflow.db”)
+mlflow.set_experiment(“my-experiment”) mlflow.start_run()
+mlflow.log_param(“key”, value) mlflow.log_params({“key1”: value1,
+“key2”: value2}) mlflow.log_metric(“accuracy”, score)
+mlflow.log_metrics({“accuracy”: score, “f1”: f1})
+mlflow.log_artifact(“file.csv”) mlflow.log_figure(fig, “plot.png”)
+mlflow.log_input(dataset, context=“training”) mlflow.set_tag(“author”,
+“Himesh Mishra”) mlflow.sklearn.log_model(model, name=“model”)
+
+END OF NOTES
